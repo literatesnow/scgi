@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net"
+	"sort"
 	"strconv"
 )
 
@@ -15,12 +16,10 @@ type Client struct {
 
 //NewClient creates a new SCGI client with default headers which will connect to a specified address.
 func NewClient(network string, address string) *Client {
-	cl := &Client{network: network, address: address}
-
-	//Default headers.
-	cl.headers = map[string]string{
-		"SCGI":           "1",
-		"REQUEST_METHOD": "POST"}
+	cl := &Client{
+		network: network,
+		address: address,
+		headers: make(map[string]string)}
 
 	return cl
 }
@@ -61,12 +60,23 @@ func (cl *Client) readResponse(conn net.Conn) (response *bytes.Buffer, err error
 	return &buf, err
 }
 
-//makeHeaders creates the headers part of the request.
+//makeHeaders creates the headers part of the request (includes required headers).
 func (cl *Client) makeHeaders(bodyLen int) []byte {
-	var headers = cl.appendHeader([]byte{}, "CONTENT_LENGTH", strconv.Itoa(bodyLen))
+	var headers []byte
 
-	for k, v := range cl.headers {
-		headers = cl.appendHeader(headers, k, v)
+	headers = cl.appendHeader(headers, "CONTENT_LENGTH", strconv.Itoa(bodyLen))
+	headers = cl.appendHeader(headers, "SCGI", "1")
+
+	var keys []string
+
+	for k := range cl.headers {
+		keys = append(keys, k)
+	}
+
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		headers = cl.appendHeader(headers, k, cl.headers[k])
 	}
 
 	return headers
@@ -75,9 +85,9 @@ func (cl *Client) makeHeaders(bodyLen int) []byte {
 //appendHeader appends a headers.
 func (cl *Client) appendHeader(buf []byte, key string, value string) []byte {
 	buf = append(buf, []byte(key)...)
-	buf = append(buf, []byte{0}...)
+	buf = append(buf, 0)
 	buf = append(buf, []byte(value)...)
-	buf = append(buf, []byte{0}...)
+	buf = append(buf, 0)
 
 	return buf
 }
